@@ -63,6 +63,18 @@ fn setup() -> (
     (env, client, admin, pool, usdc_id)
 }
 
+fn setup_without_auths() -> (
+    Env,
+    EscrowContractClient<'static>,
+    Address,
+    Address,
+    Address,
+) {
+    let (env, client, admin, pool, usdc_id) = setup();
+    env.set_auths(&[]);
+    (env, client, admin, pool, usdc_id)
+}
+
 fn generate_invoice_id(env: &Env) -> BytesN<32> {
     let mut arr = [0u8; 32];
     arr[0..8].copy_from_slice(&env.ledger().timestamp().to_be_bytes());
@@ -195,4 +207,53 @@ fn test_get_locked_returns_amount_when_locked() {
 
     client.lock(&invoice_id, &amount);
     assert_eq!(client.get_locked(&invoice_id), amount);
+}
+
+#[test]
+#[should_panic]
+fn test_lock_requires_pool_authorization() {
+    let (env, client, _admin, _pool, _usdc) = setup_without_auths();
+    let invoice_id = generate_invoice_id(&env);
+    let amount: u128 = 1_000_000_000;
+
+    // The contract stores a pool address internally, but no auth entry is
+    // present after setup_without_auths(), so this must fail at require_auth().
+    client.lock(&invoice_id, &amount);
+}
+
+#[test]
+#[should_panic]
+fn test_release_to_issuer_requires_pool_authorization() {
+    let (env, client, _admin, _pool, _usdc) = setup();
+    let invoice_id = generate_invoice_id(&env);
+    let issuer = Address::generate(&env);
+    let amount: u128 = 1_000_000_000;
+
+    client.lock(&invoice_id, &amount);
+    env.set_auths(&[]);
+    client.release_to_issuer(&invoice_id, &issuer);
+}
+
+#[test]
+#[should_panic]
+fn test_release_to_pool_requires_pool_authorization() {
+    let (env, client, _admin, _pool, _usdc) = setup();
+    let invoice_id = generate_invoice_id(&env);
+    let amount: u128 = 1_000_000_000;
+
+    client.lock(&invoice_id, &amount);
+    env.set_auths(&[]);
+    client.release_to_pool(&invoice_id, &amount);
+}
+
+#[test]
+#[should_panic]
+fn test_handle_default_requires_pool_authorization() {
+    let (env, client, _admin, _pool, _usdc) = setup();
+    let invoice_id = generate_invoice_id(&env);
+    let amount: u128 = 1_000_000_000;
+
+    client.lock(&invoice_id, &amount);
+    env.set_auths(&[]);
+    client.handle_default(&invoice_id);
 }
